@@ -5,33 +5,33 @@
   (:import com.amazon.ion.system.IonSystemBuilder
            software.amazon.qldb.QldbHash))
 
+(def qldb (aws/client {:api :qldb}))
+
+(def qldb-session (aws/client {:api :qldb-session}))
+
+(defn- get-qldb-hash-obj [arg]
+  (QldbHash/toQldbHash (clj->ion arg) (.build (IonSystemBuilder/standard))))
+
+(defn- compute-hash [& args]
+  (reduce #(.dot %1 (get-qldb-hash-obj %2))
+          (get-qldb-hash-obj (first args))
+          (rest args)))
+
+(defn- handle-result [result]
+  (if (not= (some-> result meta :http-response :status (quot 100)) 2)
+    (throw (ex-info "Operation failed" result))
+    result))
+
 (defn ion-binaries->clj-data [values]
   (map #(-> %
             :IonBinary
             ion->json
             json/read-str) values))
 
-(defn get-qldb-hash-obj [arg]
-  (QldbHash/toQldbHash (clj->ion arg) (.build (IonSystemBuilder/standard))))
-
-(defn compute-hash [& args]
-  (reduce #(.dot %1 (get-qldb-hash-obj %2))
-          (get-qldb-hash-obj (first args))
-          (rest args)))
-
 (defn get-transaction-hash [tx-id & statements]
   (.getQldbHash (reduce #(.dot  %1 (apply compute-hash %2))
                         (compute-hash tx-id)
                         statements)))
-
-(def qldb (aws/client {:api :qldb}))
-
-(def qldb-session (aws/client {:api :qldb-session}))
-
-(defn handle-result [result]
-  (if (not= (some-> result meta :http-response :status (quot 100)) 2)
-    (throw (ex-info "Operation failed" result))
-    result))
 
 (defn create-ledger [ledger-name tags deletion-protection]
   (handle-result
@@ -95,6 +95,10 @@
                                                      :EndSession {}}})))
 
 (defn query [ledger-name & statements]
+  "Takes the ledger name and any number of statements and run them
+  in a transaction.
+  Each statement is a vector of strings with first element being the query
+  string and optional extra elements each being a parameter for the query"
   (let [session-token (start-session ledger-name)]
     (try
       (let [tx-id (start-transaction session-token)
