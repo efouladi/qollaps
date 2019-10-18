@@ -5,4 +5,5 @@
                                 :aws/serviceFullName "Amazon QLDB"}
         com.cognitect.aws/qldb-session {:mvn/version "747.2.533.0"
                                         :aws/serviceFullName "Amazon QLDB Session"}
+        pbalduino/dandelion {:mvn/version "0.1.2"}
         software.amazon.qldb/amazon-qldb-driver-java {:mvn/version "1.0.1"}}}
