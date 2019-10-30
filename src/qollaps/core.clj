@@ -30,7 +30,7 @@
   (map #(-> %
             :IonBinary
             ion->json
-            json/read-str) values))
+            (json/read-str :key-fn keyword)) values))
 
 (defn get-transaction-hash [tx-id & statements]
   (.getQldbHash (reduce #(.dot  %1 (apply compute-hash %2))
