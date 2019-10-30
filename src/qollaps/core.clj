@@ -5,9 +5,13 @@
   (:import com.amazon.ion.system.IonSystemBuilder
            software.amazon.qldb.QldbHash))
 
-(def qldb (aws/client {:api :qldb}))
+(def clients (atom {:qldb nil
+                    :qldb-session nil}))
 
-(def qldb-session (aws/client {:api :qldb-session}))
+(defn get-client! [client]
+  (if-let [c (get @clients client)]
+    c
+    (get (swap! clients assoc client (aws/client {:api client})) client)))
 
 (defn- get-qldb-hash-obj [arg]
   (QldbHash/toQldbHash (clj->ion arg) (.build (IonSystemBuilder/standard))))
@@ -35,7 +39,7 @@
 
 (defn create-ledger [ledger-name tags deletion-protection]
   (handle-result
-   (aws/invoke qldb {:op :CreateLedger
+   (aws/invoke (get-client! :qldb) {:op :CreateLedger
                      :request {:Name ledger-name
                                :Tags tags
                                :PermissionsMode "ALLOW_ALL"
@@ -43,11 +47,11 @@
 
 (defn describe-ledger [ledger-name]
   (handle-result
-   (aws/invoke qldb {:op :DescribeLedger
+   (aws/invoke (get-client! :qldb) {:op :DescribeLedger
                      :request {:Name ledger-name}})))
 
 (defn start-session [ledger-name]
-  (let [result (aws/invoke qldb-session {:op :SendCommand
+  (let [result (aws/invoke (get-client! :qldb-session) {:op :SendCommand
                                          :request {:StartSession {:LedgerName ledger-name}}})]
 
     (-> result
@@ -55,7 +59,7 @@
         (get-in [:StartSession :SessionToken] result))))
 
 (defn start-transaction [session-token]
-  (let [result (aws/invoke qldb-session {:op :SendCommand
+  (let [result (aws/invoke (get-client! :qldb-session) {:op :SendCommand
                                          :request {:SessionToken session-token
                                                    :StartTransaction {}}})]
     (-> result
@@ -64,7 +68,7 @@
 
 (defn execute-statement
   [session-token tx-id statement params]
-  (let [result (aws/invoke qldb-session {:op :SendCommand
+  (let [result (aws/invoke (get-client! :qldb-session) {:op :SendCommand
                                          :request {:SessionToken session-token
                                                    :ExecuteStatement {:TransactionId tx-id
                                                                       :Statement statement
@@ -79,18 +83,18 @@
                 (execute-statement session-token tx-id statement params)) statements)))
 
 (defn commit-transaction [session-token transaction-id statements]
-  (handle-result (aws/invoke qldb-session {:op :SendCommand
+  (handle-result (aws/invoke (get-client! :qldb-session) {:op :SendCommand
                                            :request {:SessionToken session-token
                                                      :CommitTransaction {:TransactionId transaction-id
                                                                          :CommitDigest (apply get-transaction-hash transaction-id statements)}}})))
 
 (defn abort-transaction [session-token]
-  (handle-result (aws/invoke qldb-session {:op :SendCommand
+  (handle-result (aws/invoke (get-client! :qldb-session) {:op :SendCommand
                                            :request {:SessionToken session-token
                                                      :AbortTransaction {}}})))
 
 (defn end-session [session-token]
-  (handle-result (aws/invoke qldb-session {:op :SendCommand
+  (handle-result (aws/invoke (get-client! :qldb-session) {:op :SendCommand
                                            :request {:SessionToken session-token
                                                      :EndSession {}}})))
 
